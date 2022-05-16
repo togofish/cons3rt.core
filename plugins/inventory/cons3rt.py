@@ -22,7 +22,7 @@ DOCUMENTATION = '''
     extends_documentation_fragment:
     - inventory_cache
     - constructed
-    
+
     description:
         - Get inventory hosts from a CONS3RT environment.
         - Uses a YAML configuration file that ends with C(cons3rt.{yml|yaml}).

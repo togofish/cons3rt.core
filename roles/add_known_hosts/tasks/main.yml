@@ -26,7 +26,7 @@
 
 - name: append keys to known_hosts
   blockinfile:
-    dest: "{{known_hosts}}"
+    dest: "{{ known_hosts }}"
     marker: "# {mark} known_hosts managed by Ansible - {{ item }}"
     block: |
       {% for host in host_keys['results'] %}
