@@ -1,0 +1,11 @@
+---
+- name: Add managed node
+  hosts: '{{ node }}'
+  gather_facts: no
+  serial: 1
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    ansible_become_method: sudo
+  roles:
+    - add_managed_node
+    - add_known_hosts

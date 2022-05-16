@@ -1,0 +1,25 @@
+---
+authors:
+  - Todd Fisher <todd.fisher@jackpinetech.com>
+description: CONS3RT Collection for Ansible.
+documentation: ''
+homepage: ''
+issues: https://github.com/togofish/cons3rt.core/issues
+license_file: LICENSE
+namespace: cons3rt
+name: core
+readme: README.md
+repository: https://github.com/togofish/cons3rt.core
+tags:
+  - cons3rt
+  - cloud
+  - infrastructure
+version: 0.1.0
+build_ignore:
+  - .idea
+  - .gitignore
+  - '*.tar.gz'
+  - .gitlab-ci.yml
+  - build
+  - ansible.cfg
+

@@ -1,0 +1,80 @@
+---
+- name: Update facts
+  setup:
+  ignore_errors: true
+  ignore_unreachable: true
+  no_log: true
+
+- name: Set username and password
+  set_fact:
+    ansible_user: "{{ hostvars[item].created_username }}"
+    ansible_ssh_pass: "{{ hostvars[item].created_password }}"
+    ansible_become_pass: "{{ hostvars[item].created_password }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  when: (hostvars[item].created_username is defined)
+  register: credentials
+
+- name: Test host connection
+  ping:
+  no_log: true
+  register: reachable
+  when: credentials is succeeded
+
+- name: Ensure wheel group exists
+  become: true
+  group:
+    name: wheel
+    state: present
+
+- name: Add ansible user
+  become: true
+  ansible.builtin.user:
+    name: ansible
+    groups: wheel
+  when: reachable is reachable
+  register: user_add
+
+- name: Set exclusive authorized key for user ansible copying it from current user
+  become: true
+  ansible.posix.authorized_key:
+    user: ansible
+    state: present
+    key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+    exclusive: true
+  when: user_add is succeeded
+
+- name: Disable password authentication for ansible user
+  become: true
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    marker: "# {mark} managed by Ansible"
+    block: |
+      Match User ansible
+        PasswordAuthentication no
+
+- name: Install pam_ssh_agent_auth
+  become: true
+  yum:
+    name: pam_ssh_agent_auth
+    state: latest
+
+# https://linux.die.net/man/8/pam_ssh_agent_auth
+# https://docs.ansible.com/ansible/latest/collections/community/general/pamd_module.html
+- name: Configure pam.d to allow sudo from ansible
+  become: true
+  community.general.pamd:
+    name: sudo
+    new_type: auth
+    new_control: sufficient
+    new_module_path: pam_ssh_agent_auth.so
+    module_arguments: 'file=~ansible/.ssh/authorized_keys'
+    state: before
+    type: auth
+    control: include
+    module_path: system-auth
+
+- name: Restart service sshd
+  become: true
+  ansible.builtin.service:
+    name: sshd
+    state: restarted

@@ -1,0 +1,39 @@
+---
+- name: remove existing hosts
+  command: "ssh-keygen -R {{ hostvars[item].ansible_host }}"
+  changed_when: false
+  when: hostvars[item].ansible_host is defined
+  with_inventory_hostnames: "{{ play_hosts }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: scan and register
+  command: "ssh-keyscan -H {{ hostvars[item].ansible_host }}"
+  register: "host_keys"
+  changed_when: false
+  when: hostvars[item].ansible_host is defined
+  with_inventory_hostnames: "{{ play_hosts }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: ensure known_hosts file exists
+  file:
+    path: "{{ known_hosts }}"
+    state: touch
+    mode: '0644'
+  run_once: true
+  delegate_to: localhost
+
+- name: append keys to known_hosts
+  blockinfile:
+    dest: "{{known_hosts}}"
+    marker: "# {mark} known_hosts managed by Ansible - {{ item }}"
+    block: |
+      {% for host in host_keys['results'] %}
+      {% for key in host['stdout_lines'] %}
+      {{ key }}
+      {% endfor %}
+      {% endfor %}
+  with_inventory_hostnames: "{{ play_hosts }}"
+  run_once: true
+  delegate_to: localhost

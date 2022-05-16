@@ -1,0 +1,13 @@
+---
+- name: Collect host entry
+  set_fact:
+    host_entry: "{{ host_entry + item }}"
+
+- name: Add IP address of all hosts
+  lineinfile:
+    dest: /etc/hosts
+    regexp: '.*{{ item }}$'
+    line: "{{ hostvars[item].ansible_default_ipv4.address }} {{ hostvars[item].system_role }}"
+    state: present
+  when: hostvars[item].ansible_default_ipv4.address is defined
+  with_inventory_hostnames: "{{ play_hosts }}"

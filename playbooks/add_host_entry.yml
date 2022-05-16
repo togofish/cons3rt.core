@@ -1,0 +1,9 @@
+---
+- name: "Adding host entry"
+  hosts: '{{ add_host }}'
+  become: yes
+  gather_facts: yes
+  vars:
+    host_entry: []
+  roles:
+    - add_hosts
