@@ -243,7 +243,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         :param group: the name of the group to which the hosts belong
         """
         for host in hosts:
-            hostname = host['systemRole']
+            # caused duplicates
+            # hostname = host['systemRole']
+            hostname = host['hostname']
 
             host = camel_dict_to_snake_dict(host, ignore_list=['Tags'])
 
