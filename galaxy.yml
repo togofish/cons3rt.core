@@ -14,7 +14,7 @@ tags:
   - cons3rt
   - cloud
   - infrastructure
-version: 0.1.0
+version: 0.1.1
 build_ignore:
   - .idea
   - .gitignore

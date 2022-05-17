@@ -73,7 +73,7 @@
     state: present
     user: ansible
     commands: ALL
-    nopassword: no
+    nopassword: true
 
 - name: Ensure SSH_AUTH_SOCK is passed with sudo
   become: true
