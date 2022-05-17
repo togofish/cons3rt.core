@@ -47,6 +47,9 @@ Recommended ansible.cfg file:
     fact_caching_connection = /home/ansible/.cons3rt
     fact_caching_timeout = 604800
 
+    # the entry below is required if you want password-less sudo
+    [sudo_become_plugin]
+    flags = -H -S
 .. code-block:: yaml
 
     # File must be named cons3rt.yaml or cons3rt.yml

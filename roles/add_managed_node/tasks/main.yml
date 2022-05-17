@@ -20,17 +20,10 @@
   register: reachable
   when: credentials is succeeded
 
-- name: Ensure wheel group exists
-  become: true
-  group:
-    name: wheel
-    state: present
-
 - name: Add ansible user
   become: true
   ansible.builtin.user:
     name: ansible
-    groups: wheel
   when: reachable is reachable
   register: user_add
 
@@ -72,6 +65,22 @@
     type: auth
     control: include
     module_path: system-auth
+
+- name: Allow the ansible user to sudo all commands
+  become: true
+  community.general.sudoers:
+    name: ansible
+    state: present
+    user: ansible
+    commands: ALL
+    nopassword: no
+
+- name: Ensure SSH_AUTH_SOCK is passed with sudo
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/ansible
+    search_string: 'SSH_AUTH_SOCK'
+    line: 'Defaults:ansible env_keep+=SSH_AUTH_SOCK'
 
 - name: Restart service sshd
   become: true

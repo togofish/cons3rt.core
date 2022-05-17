@@ -1,0 +1,21 @@
+- name: check for ansible user
+  ansible.builtin.user:
+    name: ansible
+  register: user_check
+  tags: ssh_config
+
+- name: check for ssh_config file
+  ansible.builtin.stat:
+    path: /home/ansible/.ssh/config
+  register: ssh_config_check
+  when: user_check is succeeded
+  tags: ssh_config
+
+- name: forward ssh agent
+  community.general.ssh_config:
+    user: ansible
+    forward_agent: yes
+    host: ''
+    state: present
+  when: user_check is succeeded and not ssh_config_check.stat.exists
+  tags: ssh_config

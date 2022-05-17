@@ -9,3 +9,11 @@
   roles:
     - add_managed_node
     - add_known_hosts
+
+- name: Enable ssh agent forwarding for ansible user
+  hosts: localhost
+  gather_facts: no
+  become: no
+  roles:
+    - configure_ssh_client
+  tags: ssh_config
