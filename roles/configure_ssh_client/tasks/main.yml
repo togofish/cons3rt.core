@@ -15,7 +15,7 @@
   community.general.ssh_config:
     user: ansible
     forward_agent: true
-    host: ''
+    host: '*'
     state: present
   when: user_check is succeeded and not ssh_config_check.stat.exists
   tags: ssh_config
