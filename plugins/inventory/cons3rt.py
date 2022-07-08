@@ -98,7 +98,7 @@ class Session:
                 s.mount(self.base, Pkcs12Adapter(pkcs12_filename=self.credentials['cert_file_path'],
                                                  pkcs12_password=self.credentials['cert_password']))
                 user_header = {
-                    'token': self.credentials['cons3rt_token'],
+                    'token': str(self.credentials['cons3rt_token']),
                     'Accept': 'application/json'
                 }
                 s.headers.update(user_header)
