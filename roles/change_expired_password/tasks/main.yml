@@ -1,0 +1,79 @@
+---
+- name: Install pexpect python package
+  delegate_to: localhost
+  ansible.builtin.pip:
+    name: pexpect
+
+- name: Update facts
+  setup:
+  ignore_errors: true
+  ignore_unreachable: true
+  no_log: true
+
+- name: Set username and password
+  set_fact:
+    ansible_user: "{{ hostvars[item].created_username }}"
+    ansible_ssh_pass: "{{ hostvars[item].created_password }}"
+    ansible_become_pass: "{{ hostvars[item].created_password }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  when: (hostvars[item].created_username is defined)
+  register: credentials
+
+- name: Test login
+  delegate_to: 127.0.0.1
+  expect:
+    command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
+    timeout: 5
+    responses:
+      "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
+        - "{{ ansible_ssh_pass }}"
+      "\\~\\]\\$": exit
+  changed_when: (login.msg is defined) and ("command exceeded timeout" in login.msg)
+  register: login
+  with_inventory_hostnames: "{{ play_hosts }}"
+  failed_when:
+    - login.msg is defined
+    - "'Permission denied, please try again.' in login.msg"
+
+- block:
+
+  - name: Set password if expired
+    delegate_to: 127.0.0.1
+    expect:
+      command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
+      timeout: 5
+      responses:
+        "^WARNING: Your password has expired(.*)Current password:":
+          - "{{ ansible_ssh_pass }}"
+          - "{{ ansible_ssh_pass }}"
+          - "{{ new_password }}"
+          - "{{ new_password }}"
+        # if succesfully login then quit
+        "\\~\\]\\$": exit
+    failed_when: "'authentication tokens updated successfully' not in status.stdout"
+    with_inventory_hostnames: "{{ play_hosts }}"
+
+  - name: Set new password variable
+    set_fact:
+      ansible_ssh_pass: "{{ new_password }}"
+      ansible_become_pass: "{{ new_password }}"
+
+  when:
+    - login is changed
+
+- name: Test host connection
+  ping:
+  ignore_errors: true
+  ignore_unreachable: true
+  register: reachable
+
+- name: Update root password
+  become: yes
+  ansible.builtin.user:
+    name: "root"
+    state: present
+    password: "{{ ansible_ssh_pass | password_hash('sha512') }}"
+
+- name: Unlock ansible account
+  become: yes
+  ansible.builtin.command: passwd -u ansible -f
