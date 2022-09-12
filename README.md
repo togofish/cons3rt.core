@@ -33,6 +33,10 @@ Click on the name of a plugin or module to view that content's documentation:
 
 ## Installation and Usage
 
+### Build
+
+    ansible-galaxy collection build
+
 ### Installing the Collection from Ansible Galaxy
 
 Before using the Kubernetes collection, you need to install it with the Ansible Galaxy CLI:

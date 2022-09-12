@@ -10,62 +10,59 @@
   ignore_unreachable: true
   no_log: true
 
-- name: Set username and password
+- name: Set ansible_user username and password
   set_fact:
     ansible_user: "{{ hostvars[item].created_username }}"
-    ansible_ssh_pass: "{{ hostvars[item].created_password }}"
-    ansible_become_pass: "{{ hostvars[item].created_password }}"
+    ansible_ssh_pass: "{{ new_password }}"
+    ansible_become_pass: "{{ new_password }}"
   with_inventory_hostnames: "{{ play_hosts }}"
   when: (hostvars[item].created_username is defined)
   register: credentials
 
-- name: Test login
+- name: Test ansible_user login with old password
   delegate_to: 127.0.0.1
   expect:
     command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
     timeout: 5
     responses:
       "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
-        - "{{ ansible_ssh_pass }}"
+        - "{{ hostvars[item].created_password }}"
       "\\~\\]\\$": exit
-  changed_when: (login.msg is defined) and ("command exceeded timeout" in login.msg)
-  register: login
-  with_inventory_hostnames: "{{ play_hosts }}"
+  changed_when:
+    - password_is_expired.stdout is defined
+    - "'WARNING: Your password has expired.' in password_is_expired.stdout"
   failed_when:
-    - login.msg is defined
-    - "'Permission denied, please try again.' in login.msg"
+    - password_is_expired.msg is defined
+    - "'Permission denied, please try again.' not in password_is_expired.msg"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  register: password_is_expired
 
 - block:
 
-  - name: Set password if expired
+  - name: Set ansible_user password
     delegate_to: 127.0.0.1
     expect:
       command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
       timeout: 5
       responses:
-        "^WARNING: Your password has expired(.*)Current password:":
+        "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
+          - "{{ hostvars[item].created_password }}"
+        "Current password:":
+          - "{{ hostvars[item].created_password }}"
+        "New password:":
           - "{{ ansible_ssh_pass }}"
+        "Retype new password:":
           - "{{ ansible_ssh_pass }}"
-          - "{{ new_password }}"
-          - "{{ new_password }}"
-        # if succesfully login then quit
-        "\\~\\]\\$": exit
-    failed_when: "'authentication tokens updated successfully' not in status.stdout"
+    register: changed_password
+    changed_when:
+      - "'authentication tokens updated successfully' in changed_password.stdout"
     with_inventory_hostnames: "{{ play_hosts }}"
 
-  - name: Set new password variable
-    set_fact:
-      ansible_ssh_pass: "{{ new_password }}"
-      ansible_become_pass: "{{ new_password }}"
+  - name: Test host connection
+    ping:
 
   when:
-    - login is changed
-
-- name: Test host connection
-  ping:
-  ignore_errors: true
-  ignore_unreachable: true
-  register: reachable
+    - password_is_expired is changed
 
 - name: Update root password
   become: yes
@@ -74,6 +71,21 @@
     state: present
     password: "{{ ansible_ssh_pass | password_hash('sha512') }}"
 
+- name: Set ansible password
+  become: yes
+  ansible.builtin.user:
+    name: "ansible"
+    state: present
+    password: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_letters,digits,^& length=30') }}"
+
 - name: Unlock ansible account
   become: yes
   ansible.builtin.command: passwd -u ansible -f
+
+- name: Set ansible account and password to never expire
+  become: yes
+  ansible.builtin.command: chage -E -1 ansible
+
+- name: Set ansible account password expiration
+  become: yes
+  ansible.builtin.command: chage --mindays 1 --maxdays 60 --warndays 7 ansible
