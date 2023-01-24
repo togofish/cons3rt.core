@@ -10,23 +10,14 @@
   ignore_unreachable: true
   no_log: true
 
-- name: Set ansible_user username and password
-  set_fact:
-    ansible_user: "{{ hostvars[item].created_username }}"
-    ansible_ssh_pass: "{{ new_password }}"
-    ansible_become_pass: "{{ new_password }}"
-  with_inventory_hostnames: "{{ play_hosts }}"
-  when: (hostvars[item].created_username is defined)
-  register: credentials
-
 - name: Test ansible_user login with old password
   delegate_to: 127.0.0.1
   expect:
-    command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
+    command: ssh -o "StrictHostKeyChecking=no" {{ hostvars[item].created_username }}@{{ hostvars[item].ansible_host }}
     timeout: 5
     responses:
       "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
-        - "{{ hostvars[item].created_password }}"
+        - "{{ old_password | default(hostvars[item].created_password) }}"
       "\\~\\]\\$": exit
   changed_when:
     - password_is_expired.stdout is defined
@@ -39,6 +30,15 @@
 
 - block:
 
+  - name: Set ansible_user username and password
+    set_fact:
+      ansible_user: "{{ hostvars[item].created_username }}"
+      ansible_ssh_pass: "{{ new_password }}"
+      ansible_become_pass: "{{ new_password }}"
+    with_inventory_hostnames: "{{ play_hosts }}"
+    when: (hostvars[item].created_username is defined)
+    register: credentials
+
   - name: Set ansible_user password
     delegate_to: 127.0.0.1
     expect:
@@ -46,9 +46,9 @@
       timeout: 5
       responses:
         "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
-          - "{{ hostvars[item].created_password }}"
+          - "{{ old_password | default(hostvars[item].created_password) }}"
         "Current password:":
-          - "{{ hostvars[item].created_password }}"
+          - "{{ old_password | default(hostvars[item].created_password) }}"
         "New password:":
           - "{{ ansible_ssh_pass }}"
         "Retype new password:":
@@ -64,12 +64,31 @@
   when:
     - password_is_expired is changed
 
+- block:
+
+    - name: Set ansible_user username and password
+      set_fact:
+        created_user: "{{ hostvars[item].created_username }}"
+      with_inventory_hostnames: "{{ play_hosts }}"
+      when: (hostvars[item].created_username is defined)
+      register: credentials
+
+    - name: Update {{ created_user }} password
+      become: yes
+      ansible.builtin.user:
+        name: "{{ created_user }}"
+        state: present
+        password: "{{ new_password | password_hash('sha512') }}"
+
+  when:
+    - password_is_expired is not changed
+
 - name: Update root password
   become: yes
   ansible.builtin.user:
     name: "root"
     state: present
-    password: "{{ ansible_ssh_pass | password_hash('sha512') }}"
+    password: "{{ new_password | password_hash('sha512') }}"
 
 - name: Set ansible password
   become: yes
