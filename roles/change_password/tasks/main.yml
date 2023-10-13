@@ -1,0 +1,162 @@
+---
+- name: install pexpect python package
+  run_once: true
+  delegate_to: localhost
+  ansible.builtin.pip:
+    name: pexpect
+
+- name: set created_user variable
+  set_fact:
+    created_user: "{{ hostvars[item].created_username }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+
+#- name: Test ansible user password
+#  delegate_to: localhost
+#  ansible.builtin.command: ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "PreferredAuthentications=password" "{{ hostvars[item].ansible_host }}"
+#  with_inventory_hostnames: "{{ play_hosts }}"
+#  ignore_errors: true
+#  no_log: true
+#  failed_when:
+#    - ansible_user_test.stderr is defined
+#    - '"Permission denied" in ansible_user_test.stderr'
+#  changed_when:
+#    - ansible_user_test.stderr is defined
+#    - "'WARNING: Your password has expired.' in ansible_user_test.stdout"
+#  register: ansible_user_test
+
+#- block:
+- name: set password variable
+  set_fact:
+    ansible_user: "{{ created_user }}"
+    ansible_password: "{{ hostvars[item].created_password }}"
+    ansible_become_password: "{{ hostvars[item].created_password }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+- name: "Checking if credentials are VALID for the following user: {{ ansible_user }}"
+  delegate_to: localhost
+  expect:
+    command: ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "PreferredAuthentications=password" "{{ ansible_user }}@{{ hostvars[item].ansible_host }}"
+    timeout: 5
+    responses:
+      "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
+        - "{{ ansible_password }}"
+      "(.*)Permission denied, please try again(.*)password: $":
+        - "\x03"
+  register: failed
+  ignore_errors: true
+  changed_when: false
+  failed_when:
+    - failed.msg is defined
+    - "'Permission denied' in failed.msg"
+  with_inventory_hostnames: "{{ play_hosts }}"
+- ansible.builtin.fail:
+    msg: "The following credentials are invalid: {{ ansible_user }}:{{ ansible_password }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  when:
+    - failed is failed
+- name: "Checking if credentials are EXPIRED for the following user: {{ ansible_user }}"
+  delegate_to: localhost
+  expect:
+    command: ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" -o "PreferredAuthentications=password" "{{ ansible_user }}@{{ hostvars[item].ansible_host }}"
+    timeout: 5
+    responses:
+      "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
+        - "{{ ansible_password }}"
+      "(.*)WARNING: Your password has expired(.*)":
+        - "\x03"
+  register: expired
+  failed_when: false
+  changed_when:
+    - expired.stdout is defined
+    - "'WARNING: Your password has expired' in expired.stdout"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  when:
+    - failed is not failed
+- debug:
+    msg: "Password is expired for the following user: {{ ansible_user }}"
+  with_inventory_hostnames: "{{ play_hosts }}"
+  when:
+    - expired is defined
+    - expired is changed
+#  when:
+#    - ansible_user_test is not succeeded
+
+- block:
+    - name: Set ansible_user username and password
+      set_fact:
+        ansible_password: "{{ new_password }}"
+        ansible_become_password: "{{ new_password }}"
+      with_inventory_hostnames: "{{ play_hosts }}"
+    - name: Set ansible_user password
+      delegate_to: localhost
+      expect:
+        command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
+        timeout: 5
+        responses:
+          "^(.*)@((?:[0-9]{1,3}\\.){3}[0-9]{1,3})'s password: $":
+            - "{{ old_password | default(hostvars[item].created_password) }}"
+          "Current password:":
+            - "{{ old_password | default(hostvars[item].created_password) }}"
+          "New password:":
+            - "{{ ansible_password }}"
+          "Retype new password:":
+            - "{{ ansible_password }}"
+      register: changed_password
+      changed_when:
+        - "'authentication tokens updated successfully' in changed_password.stdout"
+      with_inventory_hostnames: "{{ play_hosts }}"
+  when:
+    - expired is defined
+    - expired is changed
+
+#- block:
+#    - name: Update {{{ hostvars[item].created_username }} password
+#      become: yes
+#      ansible.builtin.user:
+#        name: "{{ hostvars[item].created_username }}"
+#        state: present
+#        password: "{{ new_password | password_hash('sha512') }}"
+#      with_inventory_hostnames: "{{ play_hosts }}"
+#  when: ansible_user_test is succeeded
+
+- block:
+    - name: Update {{ created_user }} password
+      become: yes
+      ansible.builtin.user:
+        name: "{{ created_user }}"
+        state: present
+        password: "{{ new_password | password_hash('sha512') }}"
+      with_inventory_hostnames: "{{ play_hosts }}"
+    - set_fact:
+        ansible_password: "{{ new_password }}"
+        ansible_become_password: "{{ new_password }}"
+  when: expired is not changed
+
+- name: Update root password
+  become: yes
+  ansible.builtin.user:
+    name: "root"
+    state: present
+    password: "{{ new_password | password_hash('sha512') }}"
+
+- name: Set ansible password
+  become: yes
+  ansible.builtin.user:
+    name: "ansible"
+    state: present
+    password: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_letters,digits,^& length=30') | password_hash('sha512') }}"
+  when: created_user != "ansible"
+
+- name: Unlock ansible account
+  become: yes
+  ansible.builtin.command: passwd -u ansible -f
+  when: created_user != "ansible"
+
+- name: Set ansible account and password to never expire
+  become: yes
+  ansible.builtin.command: chage -E -1 ansible
+  when: created_user != "ansible"
+
+- name: Set ansible account password expiration
+  become: yes
+  ansible.builtin.command: chage --mindays 1 --maxdays 60 --warndays 7 ansible
+  when: created_user != "ansible"

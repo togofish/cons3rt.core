@@ -9,12 +9,9 @@ from .requests_pkcs12 import Pkcs12Adapter
 import concurrent.futures
 import time
 from ansible.errors import AnsibleError
-from ansible.plugins.inventory import BaseInventoryPlugin
-from ansible.plugins.inventory import Cacheable
-from ansible.plugins.inventory import Constructable
+from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
 from ansible.template import Templar
 from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 
 DOCUMENTATION = '''
     name: cons3rt
@@ -45,6 +42,9 @@ DOCUMENTATION = '''
         cert_password:
             description: Password for the certificate file
             required: True
+        hostname:
+            description: Pattern to use to set hostname
+            required: False
 '''
 
 
@@ -58,11 +58,14 @@ class Session:
     :param dict credentials: a dict containing the credentials to use for authentication. cert_file_path, cert_password,
      and cons3rt_token are required.
     """
-    def __init__(self, base=None, credentials=None,):
+
+    def __init__(self, cert_file_path, cert_password, cons3rt_token, cons3rt_url, ):
         self.max_retry_attempts = 10
         self.retry_time_sec = 5
-        self.base = base
-        self.credentials = credentials
+        self.base = cons3rt_url
+        self.cert_file_path = cert_file_path
+        self.cert_password = cert_password
+        self.cons3rt_token = cons3rt_token
 
     @staticmethod
     def validate_target(target):
@@ -95,10 +98,10 @@ class Session:
                 raise Cons3rtClientError(msg)
             err_msg = ''
             with requests.Session() as s:
-                s.mount(self.base, Pkcs12Adapter(pkcs12_filename=self.credentials['cert_file_path'],
-                                                 pkcs12_password=self.credentials['cert_password']))
+                s.mount(self.base, Pkcs12Adapter(pkcs12_filename=self.cert_file_path,
+                                                 pkcs12_password=self.cert_password))
                 user_header = {
-                    'token': str(self.credentials['cons3rt_token']),
+                    'token': str(self.cons3rt_token),
                     'Accept': 'application/json'
                 }
                 s.headers.update(user_header)
@@ -174,16 +177,13 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         self.group_prefix = 'cons3rt_'
         self.max_workers = 10
 
-        self.cons3rt_url = None
-
-        # credentials
-        self.cert_file_path = None
-        self.cons3rt_token = None
-        self.cert_password = None
-
-    def _get_connection(self, credentials):
+    def _get_connection(self):
+        cert_file_path = self.get_option('cert_file_path')
+        cert_password = self.get_option('cert_password')
+        cons3rt_token = self.get_option('cons3rt_token')
+        cons3rt_url = self.get_option('cons3rt_url')
         try:
-            connection = Session(self.cons3rt_url, credentials)
+            connection = Session(cert_file_path, cert_password, cons3rt_token, cons3rt_url)
         except Cons3rtClientError as e:
             raise AnsibleError("Unable to create a CONS3RT session: %s" % str(e))
         return connection
@@ -194,8 +194,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         all_dr_hosts = []
         dr_hosts = []
 
-        credentials = self._get_credentials()
-        client = self._get_connection(credentials)
+        # credentials = self._get_credentials()
+        client = self._get_connection()
 
         drs = client.get_drs()
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -243,14 +243,10 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         :param group: the name of the group to which the hosts belong
         """
         for host in hosts:
-            # caused duplicates
-            # hostname = host['systemRole']
-            hostname = host['hostname']
-
             host = camel_dict_to_snake_dict(host, ignore_list=['Tags'])
-
+            hostname = self._compose(self.get_option('hostname'), host)
             if not hostname:
-                continue
+                hostname = host['hostname']
             self.inventory.add_host(hostname, group=group)
             new_vars = dict()
             for hostvar, hostval in host.items():
@@ -276,50 +272,10 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                 valid = True
         return valid
 
-    def _set_credentials(self, loader):
-        """
-        :param loader: contents of the inventory config file
-        """
-
-        t = Templar(loader=loader)
-        credentials = {}
-
-        for credential_type in ['cert_file_path', 'cert_password', 'cons3rt_token']:
-            if t.is_template(self.get_option(credential_type)):
-                credentials[credential_type] = t.template(variable=self.get_option(credential_type),
-                                                          disable_lookups=False)
-            else:
-                credentials[credential_type] = self.get_option(credential_type)
-
-        self.cert_file_path = credentials['cert_file_path']
-        self.cert_password = credentials['cert_password']
-        self.cons3rt_token = credentials['cons3rt_token']
-
-        if not (self.cert_file_path and self.cert_password and self.cons3rt_token):
-            raise AnsibleError("Insufficient credentials found. Please provide them in your "
-                               "inventory configuration file.")
-
-    def _get_credentials(self):
-        """
-        :return: a dictionary of CONS3RT client credentials
-        """
-        cons3rt_params = {}
-        for credential in (('cert_file_path', self.cert_file_path),
-                           ('cert_password', self.cert_password),
-                           ('cons3rt_token', self.cons3rt_token)):
-            if credential[1]:
-                cons3rt_params[credential[0]] = credential[1]
-
-        return cons3rt_params
-
     def parse(self, inventory, loader, path, cache=True):
-
-        # call base method to ensure properties are available for use with other helper methods
-        super(InventoryModule, self).parse(inventory, loader, path, cache)
+        super().parse(inventory, loader, path, cache=cache)
 
         self._read_config_data(path)
-        self._set_credentials(loader)
-        self.cons3rt_url = self.get_option('cons3rt_url')
 
         cache_key = self.get_cache_key(path)
         # false when refresh_cache or --flush-cache is used
