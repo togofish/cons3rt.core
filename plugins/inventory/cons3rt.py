@@ -3,6 +3,8 @@ from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 import json
+import sys
+
 import requests
 from requests.exceptions import RequestException, SSLError
 from .requests_pkcs12 import Pkcs12Adapter
@@ -10,7 +12,6 @@ import concurrent.futures
 import time
 from ansible.errors import AnsibleError
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
-from ansible.template import Templar
 from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
 DOCUMENTATION = '''
@@ -33,15 +34,21 @@ DOCUMENTATION = '''
         cons3rt_url:
             description: Base url of the CONS3RT api (e.g., https://api.arcus-cloud.io/rest)
             required: True
-        cert_file_path:
-            description: Path to the certificate file (P12)
-            required: True
         cons3rt_token:
             description: CONS3RT API project token for the user
             required: True
+        cert_file_path:
+            description: Path to the certificate file (P12)
+            required: False
         cert_password:
             description: Password for the certificate file
-            required: True
+            required: False
+        cons3rt_username:
+            description: CONS3RT username
+            required: False
+        insecure:
+            description: Whether to ignore SSL errors
+            required: False
         hostname:
             description: Pattern to use to set hostname
             required: False
@@ -54,18 +61,23 @@ class Cons3rtClientError(Exception):
 
 class Session:
     """A session to the CONS3RT API
-    :param string base: base url of the cons3rt api (e.g., https://api.cons3rt.com/rest)
-    :param dict credentials: a dict containing the credentials to use for authentication. cert_file_path, cert_password,
-     and cons3rt_token are required.
+    :param string cons3rt_url: base url of the cons3rt api (e.g., https://api.cons3rt.com/rest)
+    :param string cons3rt_token: cons3rt api project token for the user
+    :param string cert_file_path: path to the certificate file (P12)
+    :param string cert_password: password for the certificate file
+    :param string cons3rt_username: cons3rt username
+    :param bool insecure: whether to ignore SSL errors
     """
 
-    def __init__(self, cert_file_path, cert_password, cons3rt_token, cons3rt_url, ):
+    def __init__(self, cons3rt_url, cons3rt_token, cert_file_path=None, cert_password=None, cons3rt_username=None, insecure=False):
         self.max_retry_attempts = 10
         self.retry_time_sec = 5
         self.base = cons3rt_url
+        self.cons3rt_token = cons3rt_token
         self.cert_file_path = cert_file_path
         self.cert_password = cert_password
-        self.cons3rt_token = cons3rt_token
+        self.cons3rt_username = cons3rt_username
+        self.insecure = insecure
 
     @staticmethod
     def validate_target(target):
@@ -98,13 +110,23 @@ class Session:
                 raise Cons3rtClientError(msg)
             err_msg = ''
             with requests.Session() as s:
-                s.mount(self.base, Pkcs12Adapter(pkcs12_filename=self.cert_file_path,
-                                                 pkcs12_password=self.cert_password))
-                user_header = {
-                    'token': str(self.cons3rt_token),
-                    'Accept': 'application/json'
-                }
-                s.headers.update(user_header)
+                if self.insecure:
+                    s.verify = False
+                if self.cert_file_path and self.cert_password:
+                    s.mount(self.base, Pkcs12Adapter(pkcs12_filename=self.cert_file_path,
+                                                     pkcs12_password=self.cert_password))
+                    user_header = {
+                        'token': str(self.cons3rt_token),
+                        'Accept': 'application/json'
+                    }
+                    s.headers.update(user_header)
+                else:
+                    user_header = {
+                        'username': str(self.cons3rt_username),
+                        'token': str(self.cons3rt_token),
+                        'Accept': 'application/json'
+                    }
+                    s.headers.update(user_header)
             try:
                 response = s.get(url)
             except RequestException as exc:
@@ -178,12 +200,15 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         self.max_workers = 10
 
     def _get_connection(self):
+        cons3rt_url = self.get_option('cons3rt_url')
+        cons3rt_token = self.get_option('cons3rt_token')
         cert_file_path = self.get_option('cert_file_path')
         cert_password = self.get_option('cert_password')
-        cons3rt_token = self.get_option('cons3rt_token')
-        cons3rt_url = self.get_option('cons3rt_url')
+        cons3rt_username = self.get_option('cons3rt_username')
+        insecure = self.get_option('insecure')
+
         try:
-            connection = Session(cert_file_path, cert_password, cons3rt_token, cons3rt_url)
+            connection = Session(cons3rt_url, cons3rt_token, cert_file_path=cert_file_path, cert_password=cert_password, cons3rt_username=cons3rt_username, insecure=insecure)
         except Cons3rtClientError as e:
             raise AnsibleError("Unable to create a CONS3RT session: %s" % str(e))
         return connection
@@ -197,17 +222,26 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         # credentials = self._get_credentials()
         client = self._get_connection()
 
+        print(f'Updating CONS3RT inventory...', end='')
         drs = client.get_drs()
+
+        # Assuming drs is a list of deployment reservations you're fetching
+        if not drs:
+            print("\nNo deployment reservations found.")
+            return
+
+        print("\nProcessing deployment reservations...", end='')
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            results = []
-            for dr in drs:
-                if dr['fapStatus'] == "RESERVED":
-                    results.append(executor.submit(client.get_dr_hosts, dr['id']))
+            future_to_dr = {executor.submit(client.get_dr_hosts, dr['id']): dr for dr in drs if dr['fapStatus'] == "RESERVED"}
 
-        for r in results:
-            dr_hosts.extend(r.result())
+            for future in concurrent.futures.as_completed(future_to_dr):
+                dr_hosts.extend(future.result())
+                print('.', end='')  # Print a dot for each completed future without starting a new line
+                sys.stdout.flush()
 
-        print(f'Time to get DR list: {time.perf_counter() - start}')
+        duration = time.perf_counter() - start
+        print(f'\nCompleted. Time to get DR list: {duration:.2f} seconds')
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             results = []

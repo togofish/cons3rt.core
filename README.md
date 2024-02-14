@@ -49,7 +49,7 @@ You can also include it in a `requirements.yml` file and install it via `ansible
 ---
 collections:
   - name: cons3rt.core
-    version: 0.1.9
+    version: 0.1.10
 ```
 
 ## Publishing New Versions

@@ -1,7 +1,0 @@
-pyOpenSSL
-jmespath
-stormssh
-requests~=2.26.0
-ansible~=5.7.1
-cryptography~=36.0.1
-urllib3~=1.26.7

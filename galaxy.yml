@@ -14,7 +14,7 @@ tags:
   - cons3rt
   - cloud
   - infrastructure
-version: 0.1.10
+version: 0.1.11
 build_ignore:
   - .idea
   - .gitignore
@@ -22,4 +22,6 @@ build_ignore:
   - .gitlab-ci.yml
   - build
   - ansible.cfg
+  - venv
+  - .DS_Store
 
