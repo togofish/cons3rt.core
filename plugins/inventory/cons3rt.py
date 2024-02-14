@@ -69,7 +69,8 @@ class Session:
     :param bool insecure: whether to ignore SSL errors
     """
 
-    def __init__(self, cons3rt_url, cons3rt_token, cert_file_path=None, cert_password=None, cons3rt_username=None, insecure=False):
+    def __init__(self, cons3rt_url, cons3rt_token, cert_file_path=None, cert_password=None, cons3rt_username=None,
+                 insecure=False):
         self.max_retry_attempts = 10
         self.retry_time_sec = 5
         self.base = cons3rt_url
@@ -208,7 +209,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         insecure = self.get_option('insecure')
 
         try:
-            connection = Session(cons3rt_url, cons3rt_token, cert_file_path=cert_file_path, cert_password=cert_password, cons3rt_username=cons3rt_username, insecure=insecure)
+            connection = Session(cons3rt_url, cons3rt_token, cert_file_path=cert_file_path, cert_password=cert_password,
+                                 cons3rt_username=cons3rt_username, insecure=insecure)
         except Cons3rtClientError as e:
             raise AnsibleError("Unable to create a CONS3RT session: %s" % str(e))
         return connection
@@ -233,7 +235,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         print("\nProcessing deployment reservations...", end='')
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_dr = {executor.submit(client.get_dr_hosts, dr['id']): dr for dr in drs if dr['fapStatus'] == "RESERVED"}
+            future_to_dr = {executor.submit(client.get_dr_hosts, dr['id']): dr for dr in drs
+                            if dr['fapStatus'] == "RESERVED"}
 
             for future in concurrent.futures.as_completed(future_to_dr):
                 dr_hosts.extend(future.result())
