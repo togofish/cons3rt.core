@@ -3,6 +3,7 @@ from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 import json
+import ssl
 import sys
 
 import requests
@@ -171,21 +172,35 @@ class Session:
         print('Parsed decoded content: {c}'.format(c=decoded_content))
         return decoded_content
 
+    def get_projects(self):
+        response = self.http_get('/api/projects')
+        if response.status_code != 200:
+            raise Cons3rtClientError('Failed to get projects: ' + str(response.status_code))
+        projects = json.loads(response.content.decode('utf-8'))
+        return projects
+
     def get_drs(self):
-        deployment_runs = json.loads(self.http_get('/api/drs?search_type=SEARCH_AVAILABLE&in_project=true')
-                                     .content.decode('utf-8'))
+        response = self.http_get('/api/drs?search_type=SEARCH_AVAILABLE&in_project=true')
+        if response.status_code != 200:
+            raise Cons3rtClientError('Failed to get deployment run: ' + str(response.status_code))
+        deployment_runs = json.loads(response.content.decode('utf-8'))
         return deployment_runs
 
     def get_dr_hosts(self, deployment_run_id):
-        deployment_run = json.loads(self.http_get("/api/drs/" + str(deployment_run_id)).content.decode('utf-8'))
+        response = self.http_get("/api/drs/" + str(deployment_run_id))
+        if response.status_code != 200:
+            raise Cons3rtClientError('Failed to get deployment run hosts: ' + str(response.status_code))
+        deployment_run = json.loads(response.content.decode('utf-8'))
         for d in deployment_run['deploymentRunHosts']:
             d.update({'drId': deployment_run_id})
             d.update({'drName': deployment_run['name']})
         return deployment_run['deploymentRunHosts']
 
     def get_dr_host_details(self, deployment_run_id, deployment_run_host_id, deployment_run_name):
-        deployment_run_host = json.loads(self.http_get("/api/drs/" + str(deployment_run_id) + "/host/" +
-                                                       str(deployment_run_host_id)).content.decode('utf-8'))
+        response = self.http_get("/api/drs/" + str(deployment_run_id) + "/host/" + str(deployment_run_host_id))
+        if response.status_code != 200:
+            raise Cons3rtClientError('Failed to get deployment run host details: ' + str(response.status_code))
+        deployment_run_host = json.loads(response.content.decode('utf-8'))
         deployment_run_host.update({'drId': deployment_run_id})
         deployment_run_host.update({'drName': deployment_run_name})
         return deployment_run_host

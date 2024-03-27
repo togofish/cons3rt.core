@@ -25,7 +25,7 @@ try:
     # For Python 3.6 and above, PROTOCOL_TLS chooses the highest protocol version
     # that both the client and server support.
     # This is the recommended method of selecting the SSL/TLS protocol version.
-    default_ssl_protocol = ssl.PROTOCOL_TLS
+    default_ssl_protocol = ssl.PROTOCOL_TLSv1_2
 except AttributeError:
     # Fallback for Python versions before 3.6 that might not have PROTOCOL_TLS,
     # but this case is increasingly unlikely as older versions of Python are phased out.
@@ -37,7 +37,7 @@ except AttributeError:
         # If PROTOCOL_TLSv1_2 is also not available, as a last resort, fall back to PROTOCOL_SSLv23.
         # Be aware that using PROTOCOL_SSLv23 can be insecure due to the possibility of using SSLv2 or SSLv3,
         # so this should be avoided if at all possible.
-        default_ssl_protocol = ssl.PROTOCOL_SSLv23
+        default_ssl_protocol = ssl.PROTOCOL_TLSv1_1
 
 
 class CustomPyOpenSSLContext(PyOpenSSLContext):
