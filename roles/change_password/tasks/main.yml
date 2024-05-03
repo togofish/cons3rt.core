@@ -81,12 +81,12 @@
 #    - ansible_user_test is not succeeded
 
 - block:
-    - name: Set ansible_user username and password
+    - name: Set {{ ansible_user }} username and password
       set_fact:
         ansible_password: "{{ new_password }}"
         ansible_become_password: "{{ new_password }}"
       with_inventory_hostnames: "{{ play_hosts }}"
-    - name: Set ansible_user password
+    - name: Set {{ ansible_user }} password
       delegate_to: localhost
       expect:
         command: ssh -o "StrictHostKeyChecking=no" {{ ansible_user }}@{{ hostvars[item].ansible_host }}
@@ -138,25 +138,25 @@
     state: present
     password: "{{ new_password | password_hash('sha512') }}"
 
-- name: Set ansible password
+- name: Set {{ ansible_user }} password
   become: yes
   ansible.builtin.user:
-    name: "ansible"
+    name: "{{ ansible_user }}"
     state: present
     password: "{{ lookup('ansible.builtin.password', '/dev/null chars=ascii_letters,digits,^& length=30') | password_hash('sha512') }}"
   when: created_user != "ansible"
 
-- name: Unlock ansible account
+- name: Unlock {{ ansible_user }} account
   become: yes
-  ansible.builtin.command: passwd -u ansible -f
-  when: created_user != "ansible"
+  ansible.builtin.command: passwd -u {{ ansible_user }} -f
+  when: created_user != "{{ ansible_user }}"
 
-- name: Set ansible account and password to never expire
+- name: Set {{ ansible_user }} account and password to never expire
   become: yes
-  ansible.builtin.command: chage -E -1 ansible
-  when: created_user != "ansible"
+  ansible.builtin.command: chage -E -1 {{ ansible_user }}
+  when: created_user != "{{ ansible_user }}"
 
-- name: Set ansible account password expiration
+- name: Set {{ ansible_user }} account password expiration
   become: yes
-  ansible.builtin.command: chage --mindays 1 --maxdays 60 --warndays 7 ansible
-  when: created_user != "ansible"
+  ansible.builtin.command: chage --mindays 1 --maxdays 60 --warndays 7 {{ ansible_user }}
+  when: created_user != "{{ ansible_user }}"
