@@ -1,4 +1,9 @@
 ---
+- name: Set username of ansible_user to create_ansible_user
+  set_fact:
+    create_ansible_user: "{{ ansible_user }}"
+  register: ansible_user_test
+
 - name: Set username and password
   ansible.builtin.set_fact:
     ansible_user: "{{ created_username }}"
@@ -12,29 +17,29 @@
   register: reachable
   when: credentials is succeeded
 
-- name: Add {{ ansible_user }} user
+- name: Add {{ create_ansible_user }} user
   become: true
   ansible.builtin.user:
-    name: "{{ ansible_user }}"
+    name: "{{ create_ansible_user }}"
   when: reachable is reachable
   register: user_add
 
-- name: Set exclusive authorized key for {{ ansible_user }} by copying it from current user
+- name: Set exclusive authorized key for {{ create_ansible_user }} by copying it from current user
   become: true
   ansible.posix.authorized_key:
-    user: "{{ ansible_user }}"
+    user: "{{ create_ansible_user }}"
     state: present
     key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
     exclusive: true
   when: user_add is succeeded
 
-- name: Disable password authentication for {{ ansible_user }} user
+- name: Disable password authentication for {{ create_ansible_user }} user
   become: true
   blockinfile:
     path: /etc/ssh/sshd_config
     marker: "# {mark} managed by Ansible"
     block: |
-      Match User {{ ansible_user }}
+      Match User {{ create_ansible_user }}
         PasswordAuthentication no
 
 - name: Install pam_ssh_agent_auth
@@ -45,23 +50,23 @@
 
 # https://linux.die.net/man/8/pam_ssh_agent_auth
 # https://docs.ansible.com/ansible/latest/collections/community/general/pamd_module.html
-- name: Configure pam.d to allow sudo from {{ ansible_user }}
+- name: Configure pam.d to allow sudo from {{ create_ansible_user }}
   become: true
   community.general.pamd:
     name: sudo
     new_type: auth
     new_control: sufficient
     new_module_path: pam_ssh_agent_auth.so
-    module_arguments: 'file=/home/{{ ansible_user }}/.ssh/authorized_keys'
+    module_arguments: 'file=/home/{{ create_ansible_user }}/.ssh/authorized_keys'
     state: before
     type: auth
     control: include
     module_path: system-auth
 
-- name: Allow the {{ ansible_user }} user to sudo all commands
+- name: Allow the {{ create_ansible_user }} user to sudo all commands
   become: true
   community.general.sudoers:
-    name: "{{ ansible_user }}"
+    name: "{{ create_ansible_user }}"
     state: present
     user: ansible
     commands: ALL
@@ -70,9 +75,9 @@
 - name: Ensure SSH_AUTH_SOCK is passed with sudo
   become: true
   ansible.builtin.lineinfile:
-    path: /etc/sudoers.d/{{ ansible_user }}
+    path: /etc/sudoers.d/{{ create_ansible_user }}
     search_string: 'SSH_AUTH_SOCK'
-    line: 'Defaults:ansible env_keep+=SSH_AUTH_SOCK'
+    line: 'Defaults:{{ create_ansible_user }} env_keep+=SSH_AUTH_SOCK'
 
 - name: Restart service sshd
   become: true
