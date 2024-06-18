@@ -1,7 +1,7 @@
 ---
-- name: Set username of ansible_user to create_ansible_user
+- name: Set create_ansible_user
   set_fact:
-    create_ansible_user: "{{ ansible_user }}"
+    create_ansible_user: "{{ ansible_user_to_create if (ansible_user_to_create is defined and ansible_user_to_create is not none) else ansible_user }}"
   register: ansible_user_test
 
 - name: Set username and password
