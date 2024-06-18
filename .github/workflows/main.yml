@@ -27,4 +27,6 @@ jobs:
         run: ansible-galaxy collection build -v
 
       - name: Publish Ansible Galaxy collection
+        env:
+          ANSIBLE_GALAXY_TOKEN: ${{ secrets.ANSIBLE_GALAXY_TOKEN }}
         run: ansible-galaxy collection publish *.tar.gz --token "$ANSIBLE_GALAXY_TOKEN"
