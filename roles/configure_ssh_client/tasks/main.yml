@@ -1,10 +1,11 @@
-- name: check for ssh_config file
+---
+- name: Check for ssh_config file
   ansible.builtin.stat:
-    path: /home/ansible/.ssh/config
+    path: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/config') }}"
   register: ssh_config_check
   tags: ssh_config
 
-- name: forward ssh agent
+- name: Forward ssh agent
   community.general.ssh_config:
     user: ansible
     forward_agent: true

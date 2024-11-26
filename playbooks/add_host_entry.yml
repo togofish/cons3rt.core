@@ -6,4 +6,4 @@
   vars:
     host_entry: []
   roles:
-    - add_hosts
+    - add_host_entry

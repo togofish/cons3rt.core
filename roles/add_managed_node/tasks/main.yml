@@ -1,6 +1,6 @@
 ---
 - name: Set create_ansible_user
-  set_fact:
+  ansible.builtin.set_fact:
     create_ansible_user: "{{ ansible_user_to_create if (ansible_user_to_create is defined and ansible_user_to_create is not none) else ansible_user }}"
   register: ansible_user_test
 
@@ -12,30 +12,30 @@
   register: credentials
 
 - name: Test host connection
-  ping:
+  ansible.builtin.ping:
   no_log: true
   register: reachable
   when: credentials is succeeded
 
-- name: Add {{ create_ansible_user }} user
+- name: Add user - {{ create_ansible_user }}
   become: true
   ansible.builtin.user:
     name: "{{ create_ansible_user }}"
   when: reachable is reachable
   register: user_add
 
-- name: Set exclusive authorized key for {{ create_ansible_user }} by copying it from current user
+- name: Set exclusive authorized key for the following user by copying it from current user - {{ create_ansible_user }}
   become: true
   ansible.posix.authorized_key:
     user: "{{ create_ansible_user }}"
     state: present
-    key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+    key: "{{ lookup('file', public_key | default(lookup('env', 'HOME') + '/.ssh/id_rsa.pub')) }}"
     exclusive: true
   when: user_add is succeeded
 
-- name: Disable password authentication for {{ create_ansible_user }} user
+- name: Disable password authentication for user - {{ create_ansible_user }}
   become: true
-  blockinfile:
+  ansible.builtin.blockinfile:
     path: /etc/ssh/sshd_config
     marker: "# {mark} managed by Ansible"
     block: |
@@ -44,9 +44,9 @@
 
 - name: Install pam_ssh_agent_auth
   become: true
-  yum:
+  ansible.builtin.dnf:
     name: pam_ssh_agent_auth
-    state: latest
+    state: present
 
 # https://linux.die.net/man/8/pam_ssh_agent_auth
 # https://docs.ansible.com/ansible/latest/collections/community/general/pamd_module.html
@@ -63,7 +63,7 @@
     control: include
     module_path: system-auth
 
-- name: Allow the {{ create_ansible_user }} user to sudo all commands
+- name: Allow the following user to sudo all commands - {{ create_ansible_user }}
   become: true
   community.general.sudoers:
     name: "{{ create_ansible_user }}"

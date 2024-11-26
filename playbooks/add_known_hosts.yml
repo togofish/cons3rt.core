@@ -1,0 +1,7 @@
+---
+- name: Add known hosts
+  hosts: '{{ hosts }}'
+  gather_facts: false
+  become: false
+  roles:
+    - add_known_hosts

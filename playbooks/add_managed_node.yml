@@ -1,19 +1,21 @@
 ---
-- name: Add managed node
-  hosts: '{{ node }}'
-  gather_facts: no
+- name: Add managed node(s)
+  hosts: '{{ hosts }}'
+  gather_facts: false
   serial: 1
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     ansible_become_method: sudo
   roles:
     - add_managed_node
-    - add_known_hosts
+
+- name: Add known hosts
+  import_playbook: add_known_hosts.yml
 
 - name: Enable ssh agent forwarding for ansible user
   hosts: localhost
-  gather_facts: no
-  become: no
+  gather_facts: false
+  become: false
   roles:
     - configure_ssh_client
   tags: ssh_config

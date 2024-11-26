@@ -1,33 +1,33 @@
 ---
-- name: remove existing hosts
-  command: "ssh-keygen -R {{ hostvars[item].ansible_host }}"
+- name: Remove existing hosts
+  ansible.builtin.command: "ssh-keygen -R {{ hostvars[item].ansible_host }}"
   changed_when: false
   when: hostvars[item].ansible_host is defined
   with_inventory_hostnames: "{{ play_hosts }}"
   run_once: true
   delegate_to: localhost
 
-- name: scan and register
-  command: "ssh-keyscan -H {{ hostvars[item].ansible_host }}"
-  register: "host_keys"
+- name: Scan and register
+  ansible.builtin.command: "ssh-keyscan -H {{ hostvars[item].ansible_host }}"
+  register: host_keys
   changed_when: false
   when: hostvars[item].ansible_host is defined
   with_inventory_hostnames: "{{ play_hosts }}"
   run_once: true
   delegate_to: localhost
 
-- name: ensure known_hosts file exists
-  file:
-    path: "{{ known_hosts }}"
+- name: Ensure known_hosts file exists
+  ansible.builtin.file:
+    path: "{{ known_hosts | default(lookup('env', 'HOME') + '/.ssh/known_hosts') }}"
     state: touch
     mode: '0644'
   run_once: true
   delegate_to: localhost
 
-- name: append keys to known_hosts
-  blockinfile:
-    dest: "{{ known_hosts }}"
-    marker: "# {mark} known_hosts managed by Ansible - {{ item }}"
+- name: Append keys to known_hosts
+  ansible.builtin.blockinfile:
+    dest: "{{ known_hosts | default(lookup('env', 'HOME') + '/.ssh/known_hosts') }}"
+    marker: "# {mark} known_hosts managed by Ansible"
     block: |
       {% for host in host_keys['results'] %}
       {% for key in host['stdout_lines'] %}
